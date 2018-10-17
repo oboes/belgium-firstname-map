@@ -15,32 +15,35 @@
     background: black;
 }
 
-.input-div {
+.panel {
 	position: relative;
 	float: left;
 	background: #fff;
-	color: #1978cf;
 	border: 2px solid rgba(0,0,0,0.2);
 	background-clip: padding-box;
 	-moz-border-radius: 4px;
 	-webkit-border-radius: 4px;
 	border-radius: 4px;
-	background-color: rgba(255, 255, 255, 0.8);
+	background-color: white;
 	z-index: 1000;	
-	margin-left: 10px;
-	margin-top: 10px;
+    margin: 0;
+    padding: 10px;
 }
 
-.input-div .input-box {
-    display: block;
-	float: left;
-	background: #fff;
-	border: 1px solid #666;
-	border-radius: 2px;
-	height: 22px;
-	padding: 0 20px 0 2px;
-	margin: 4px 4px 4px 4px;
+.panel label {
+    font-size: 16px;
+    font-weight: normal;
 }
+
+.panel input {
+    font-size: 16px;
+    font-weight: bold;
+    border: 1px dotted rgba(0,0,0,0.2);
+    text-transform: capitalize;
+    width: 200px;
+}
+
+
 </style>
 
 </head>
@@ -49,41 +52,27 @@
 <div id="map"></div>
 <script>
 
-var name = 'Olivier';
-
-var Input = L.Control.extend({
-    options: {
-        position: 'topright'
-    },
-    container: null,
-    onAdd: function(map) {
-        this.container = L.DomUtil.create('div', 'input-div');
-
-        var input = L.DomUtil.create('input', 'input-box', this.container);
-        input.type = 'text';
-        input.size = 20;
-        input.value = name;
-
-        L.DomEvent.disableClickPropagation(this.container);
-        L.DomEvent.on(this.container, 'contextmenu', function(ev) {
-            L.DomEvent.stopPropagation(ev);
-        });
-        L.DomEvent.disableScrollPropagation(this.container);
-        L.DomEvent.on(input, 'input', function(ev) {
-            name = ev.target.value
-                     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                     .replace(/\b\w/g, function(s){ return s.toUpperCase() });
-            ev.target.value = name;
-            geojson.setStyle(style);
-        });
-        return this.container;
-    },
+var geojson;
+var panel;
+var map = L.map('map', {
+    attributionControl: false,
+    center: [50.5, 4.5],
+    closePopupOnClick: false,
+    maxBounds: [[48.4, 0.5], [52.6, 8.5]],
+    maxZoom: 11,
+    minZoom: 7,
+    zoom: 7.7,
+    zoomSnap: 0.1,
 });
+map.fitBounds([[49.4, 2.5], [51.6, 6.5]]);
 
 function style(commune) {
 
-    var density = (name in commune.properties.data) ? (commune.properties.data[name] / commune.properties.size) : 0;
+    var name = panel.input.value;
+    var density = 0;
     var color = 'hsl(60, 100%, 50%)';
+
+    if (name in commune.properties.data) density = commune.properties.data[name][1] / commune.properties.size;
 
     if (density > 0.020) color = 'hsl(0, 100%, 30%)';
     else if (density > 0.015) color = 'hsl(0, 100%, 40%)';
@@ -105,57 +94,75 @@ function style(commune) {
 }
 
 
+var Panel = L.Control.extend({
+    options: {
+        position: 'bottomleft'
+    },
+    container: null,
+    update: function(prop) {
+        var name = this.input.value;
+        var comm = (typeof prop === 'undefined') ? 'Belgium' : prop.name;
+        var data = (typeof prop === 'undefined') ? NAME : prop.data;
+        if (name in data) {
+            var size = data[name][1];
+            var rank = data[name][0] + 'th';
+            if (rank == '1th') rank = '1st';
+            else if (rank == '2th') rank = '2nd';
+            else if (rank == '3th') rank = '3rd';
+            this.legend.innerHTML = '<strong>' + size + '</strong> people with this name in <strong>' + comm + '</strong>.<br>'
+                                  + '<strong>' + rank + '</strong> most popular name in <strong>' + comm + '</strong>.';
+        }
+        else {
+            this.legend.innerHTML = '<strong>Less than 5</strong> people with this name in <strong>' + comm + '</strong>.<br>'
+                                  + '&emsp;';
+        }
+    },
+    onAdd: function(map) {
+        this.container = L.DomUtil.create('div', 'panel');
+        L.DomEvent.disableClickPropagation(this.container);
+        L.DomEvent.on(this.container, 'contextmenu', function(ev) {
+            L.DomEvent.stopPropagation(ev);
+        });
+        L.DomEvent.disableScrollPropagation(this.container);
 
+        this.title = L.DomUtil.create('label', null, this.container);
+        this.title.innerHTML = 'First name:&emsp;';
+        this.title.htmlFor = 'name';
+        this.input = L.DomUtil.create('input', null, this.container);
+        this.input.id = 'name';
+        this.input.type = 'text';
+        this.input.value = 'olivier';
+        var that = this;
+        L.DomEvent.on(this.input, 'input', function(ev) {
+            ev.target.value = ev.target.value
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+            geojson.setStyle(style);
+            that.update();
+        });
 
-var map = L.map('map', {
-    attributionControl: false,
-    center: [50.5, 4.5],
-    closePopupOnClick: false,
-    maxBounds: [[48.4, 1.5], [52.6, 7.5]],
-    maxZoom: 11,
-    minZoom: 7,
-    zoom: 7.7,
-    zoomSnap: 0.1,
+        this.legend = L.DomUtil.create('p', null, this.container);
+        this.update();
+
+        return this.container;
+    },
 });
-map.fitBounds([[49.4, 2.5], [51.6, 6.5]]);
-var geojson = L.geoJson(data, { style: style }).addTo(map);
-var input = new Input().addTo(map);
+panel = new Panel().addTo(map);
 
-/*
-info.addTo(map);
-var info = L.control();
-info.onAdd = function(map) {
-    this._div = L.DomUtil.create('div', 'info');
-    this.update();
-    return this._div;
-};
-
-info.update = function(props) {
-    this._div.innerHTML = '<h4>' + (props ? props.name+' '+props.data[name]+' '+props.data[name]/props.size : 'Test') + '</h4>';
-};
-
-function onEachFeature(feature, layer) {
+function onEachFeature(commune, layer) {
     layer.on({
-        mouseover: function(e) {
-            e.target.setStyle({
-                weight: 5,
-                color: 'green',
-                fillOpacity: 0.7
-            });
-            e.target.bringToFront();
-            info.update(e.target.feature.properties);
+        mouseover: function(ev) {
+            ev.target.setStyle({ weight: 2 });
+            ev.target.bringToFront();
+            panel.update(commune.properties);
         },
-        mouseout: function(e) {
-            geojson.resetStyle(e.target);
-            info.update();
+        mouseout: function(ev) {
+            geojson.resetStyle(ev.target);
+            panel.update();
         }
     });
 }
-*/
 
-
-
-
+geojson = L.geoJson(DATA, { style: style, onEachFeature: onEachFeature }).addTo(map);
 
 
 </script>
